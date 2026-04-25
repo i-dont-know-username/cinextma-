@@ -14,7 +14,7 @@ import {
 import { TbFolder, TbFolderFilled } from "react-icons/tb";
 
 export const siteConfig: SiteConfigType = {
-  name: "Cinextma",
+  name: "Ibraflix",
   description: "Your only choice for a free movies and tv shows streaming website.",
   favicon: "/favicon.ico",
   navItems: [
