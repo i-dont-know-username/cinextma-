@@ -90,33 +90,33 @@
 }
 
 :root {
-  --heroui-primary-50:  #ffe5e7;
-  --heroui-primary-100: #fbbdc1;
-  --heroui-primary-200: #f59399;
-  --heroui-primary-300: #ef6a71;
-  --heroui-primary-400: #ea4149;
-  --heroui-primary-500: #E50914;
-  --heroui-primary-600: #c70711;
-  --heroui-primary-700: #a1060e;
-  --heroui-primary-800: #7a040a;
-  --heroui-primary-900: #540306;
+  --heroui-primary-50: 255 229 231;
+  --heroui-primary-100: 251 189 193;
+  --heroui-primary-200: 245 147 153;
+  --heroui-primary-300: 239 106 113;
+  --heroui-primary-400: 234 65 73;
+  --heroui-primary-500: 229 9 20;
+  --heroui-primary-600: 199 7 17;
+  --heroui-primary-700: 161 6 14;
+  --heroui-primary-800: 122 4 10;
+  --heroui-primary-900: 84 3 6;
 
-  --heroui-primary: #E50914;
-  --heroui-primary-foreground: #ffffff;
+  --heroui-primary: 229 9 20;
+  --heroui-primary-foreground: 255 255 255;
 }
 
 .dark {
-  --heroui-primary-50:  #ffe5e7;
-  --heroui-primary-100: #fbbdc1;
-  --heroui-primary-200: #f59399;
-  --heroui-primary-300: #ef6a71;
-  --heroui-primary-400: #ea4149;
-  --heroui-primary-500: #E50914;
-  --heroui-primary-600: #c70711;
-  --heroui-primary-700: #a1060e;
-  --heroui-primary-800: #7a040a;
-  --heroui-primary-900: #540306;
+  --heroui-primary-50: 255 229 231;
+  --heroui-primary-100: 251 189 193;
+  --heroui-primary-200: 245 147 153;
+  --heroui-primary-300: 239 106 113;
+  --heroui-primary-400: 234 65 73;
+  --heroui-primary-500: 229 9 20;
+  --heroui-primary-600: 199 7 17;
+  --heroui-primary-700: 161 6 14;
+  --heroui-primary-800: 122 4 10;
+  --heroui-primary-900: 84 3 6;
 
-  --heroui-primary: #E50914;
-  --heroui-primary-foreground: #ffffff;
+  --heroui-primary: 229 9 20;
+  --heroui-primary-foreground: 255 255 255;
 }
