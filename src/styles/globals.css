@@ -9,6 +9,7 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme {
+  --color-primary: #e50914;
   --animate-shine: shine 3s linear infinite;
 
   --font-poppins: var(--font-poppins);
