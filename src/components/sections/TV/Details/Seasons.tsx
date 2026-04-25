@@ -20,6 +20,7 @@ import dynamic from "next/dynamic";
 import IconButton from "@/components/ui/button/IconButton";
 import SectionTitle from "@/components/ui/other/SectionTitle";
 import { titleCase } from "string-ts";
+
 const TvShowEpisodesSelection = dynamic(() => import("./Episodes"));
 
 interface Props {
@@ -27,80 +28,121 @@ interface Props {
   seasons: Season[];
 }
 
-const TvShowsSeasonsSelection = forwardRef<HTMLElement, Props>(({ id, seasons }, ref) => {
-  const FILTERED_SEASONS = useMemo(() => seasons.filter((s) => s.season_number > 0), [seasons]);
-  const [sortedByName, { toggle, close }] = useDisclosure(false);
-  const [search, setSearch] = useState("");
-  const [searchQuery] = useDebouncedValue(search, 300);
-  const [layout, setLayout] = useState<"list" | "grid">("list");
-  const [seasonNumber, setSeasonNumber] = useState(() =>
-    FILTERED_SEASONS[0].season_number.toString(),
-  );
+const TvShowsSeasonsSelection = forwardRef<HTMLElement, Props>(
+  ({ id, seasons }, ref) => {
+    /**
+     * Group seasons by season_number so anime split seasons (cour/parts)
+     * are merged into a single logical season entry.
+     */
+    const GROUPED_SEASONS = useMemo(() => {
+      const map = new Map<number, Season[]>();
 
-  return (
-    <section ref={ref} id="seasons-episodes" className="z-3 flex flex-col gap-2">
-      <SectionTitle color="warning">Season & Episode</SectionTitle>
-      <Card className="sm:p-3">
-        <CardHeader className="grid grid-cols-1 grid-rows-[1fr_auto] gap-3 md:grid-cols-[1fr_1fr_auto_auto]">
-          <Select
-            aria-label="Seasons"
-            selectedKeys={[seasonNumber]}
-            disallowEmptySelection={true}
-            classNames={{ trigger: "border-2 border-foreground-200" }}
-            onChange={(e) => {
-              close();
-              setSearch("");
-              setSeasonNumber(e.target.value);
-            }}
-          >
-            {FILTERED_SEASONS.map(({ season_number, name }) => (
-              <SelectItem key={season_number.toString()}>{name}</SelectItem>
-            ))}
-          </Select>
-          <Input
-            isClearable
-            aria-label="Search Episodes"
-            placeholder="Search episodes..."
-            value={search}
-            onValueChange={setSearch}
-            startContent={<Search />}
-            classNames={{ inputWrapper: "border-2 border-foreground-200" }}
-          />
-          <Tooltip content={titleCase(layout)}>
-            <Tabs
-              color="warning"
-              aria-label="Layout Select"
-              size="sm"
-              classNames={{ tabList: "border-2 border-foreground-200" }}
-              onSelectionChange={(value) => setLayout(value as typeof layout)}
-              selectedKey={layout}
+      for (const season of seasons) {
+        if (season.season_number <= 0) continue;
+
+        if (!map.has(season.season_number)) {
+          map.set(season.season_number, []);
+        }
+
+        map.get(season.season_number)!.push(season);
+      }
+
+      return Array.from(map.entries()).map(([season_number, items]) => {
+        const name = items
+          .map((s) => s.name)
+          .filter(Boolean)
+          .join(" / ");
+
+        return {
+          season_number,
+          name: name || `Season ${season_number}`,
+        };
+      });
+    }, [seasons]);
+
+    const [sortedByName, { toggle, close }] = useDisclosure(false);
+    const [search, setSearch] = useState("");
+    const [searchQuery] = useDebouncedValue(search, 300);
+    const [layout, setLayout] = useState<"list" | "grid">("list");
+
+    const [seasonNumber, setSeasonNumber] = useState(() =>
+      GROUPED_SEASONS[0]?.season_number.toString() ?? "1",
+    );
+
+    return (
+      <section ref={ref} id="seasons-episodes" className="z-3 flex flex-col gap-2">
+        <SectionTitle color="warning">Season & Episode</SectionTitle>
+
+        <Card className="sm:p-3">
+          <CardHeader className="grid grid-cols-1 grid-rows-[1fr_auto] gap-3 md:grid-cols-[1fr_1fr_auto_auto]">
+            <Select
+              aria-label="Seasons"
+              selectedKeys={[seasonNumber]}
+              disallowEmptySelection
+              classNames={{ trigger: "border-2 border-foreground-200" }}
+              onChange={(e) => {
+                close();
+                setSearch("");
+                setSeasonNumber(e.target.value);
+              }}
             >
-              <Tab key="list" title={<List />} />
-              <Tab key="grid" title={<Grid />} />
-            </Tabs>
-          </Tooltip>
-          <IconButton
-            tooltip="Sort by name"
-            className="p-2"
-            icon={<SortAlpha />}
-            onPress={toggle}
-            color={sortedByName ? "warning" : undefined}
-            variant={sortedByName ? "shadow" : "faded"}
-          />
-        </CardHeader>
-        <CardBody>
-          <ScrollShadow className="h-[600px] py-2 pr-2 sm:pr-3">
-            <TvShowEpisodesSelection
-              id={id}
-              seasonNumber={Number(seasonNumber)}
-              filters={{ searchQuery, sortedByName, layout }}
+              {GROUPED_SEASONS.map(({ season_number, name }) => (
+                <SelectItem key={season_number.toString()}>
+                  {name}
+                </SelectItem>
+              ))}
+            </Select>
+
+            <Input
+              isClearable
+              aria-label="Search Episodes"
+              placeholder="Search episodes..."
+              value={search}
+              onValueChange={setSearch}
+              startContent={<Search />}
+              classNames={{ inputWrapper: "border-2 border-foreground-200" }}
             />
-          </ScrollShadow>
-        </CardBody>
-      </Card>
-    </section>
-  );
-});
+
+            <Tooltip content={titleCase(layout)}>
+              <Tabs
+                color="warning"
+                aria-label="Layout Select"
+                size="sm"
+                classNames={{ tabList: "border-2 border-foreground-200" }}
+                onSelectionChange={(value) =>
+                  setLayout(value as typeof layout)
+                }
+                selectedKey={layout}
+              >
+                <Tab key="list" title={<List />} />
+                <Tab key="grid" title={<Grid />} />
+              </Tabs>
+            </Tooltip>
+
+            <IconButton
+              tooltip="Sort by name"
+              className="p-2"
+              icon={<SortAlpha />}
+              onPress={toggle}
+              color={sortedByName ? "warning" : undefined}
+              variant={sortedByName ? "shadow" : "faded"}
+            />
+          </CardHeader>
+
+          <CardBody>
+            <ScrollShadow className="h-[600px] py-2 pr-2 sm:pr-3">
+              <TvShowEpisodesSelection
+                id={id}
+                seasonNumber={Number(seasonNumber)}
+                filters={{ searchQuery, sortedByName, layout }}
+              />
+            </ScrollShadow>
+          </CardBody>
+        </Card>
+      </section>
+    );
+  },
+);
 
 TvShowsSeasonsSelection.displayName = "TvShowsSeasonsSelection";
 
