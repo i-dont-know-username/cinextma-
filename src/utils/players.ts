@@ -194,6 +194,7 @@ export const getTvShowPlayers = (
       title: "VidSrc 1",
       source: `https://vidsrc.xyz/embed/tv/${id}/${season}/${episode}`,
       ads: true,
+      recommended: true,
     },
     {
       title: "VidSrc 2",
