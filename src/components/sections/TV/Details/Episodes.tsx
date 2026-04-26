@@ -11,7 +11,9 @@ import { Episode } from "tmdb-ts/dist/types/tv-episode";
 
 interface TvShowEpisodesSelectionProps {
   id: number;
-  seasonNumber: number;
+  tmdbSeasonNumber: number;
+  virtualSeasonNumber: number;
+  virtualRange?: [number, number];
   filters?: {
     searchQuery?: string;
     sortedByName?: boolean;
@@ -28,12 +30,15 @@ interface EpisodeCardProps {
 
 const TvShowEpisodesSelection: React.FC<TvShowEpisodesSelectionProps> = ({
   id,
-  seasonNumber,
+  tmdbSeasonNumber,
+  virtualSeasonNumber,
+  virtualRange,
   filters: { searchQuery, sortedByName, layout } = {},
 }) => {
   const { data, isPending } = useQuery({
-    queryFn: () => tmdb.tvShows.season(id, seasonNumber),
-    queryKey: ["tv-show-episodes", id, seasonNumber],
+    // We still fetch the real TMDB season (e.g. 1) to get the data
+    queryFn: () => tmdb.tvShows.season(id, tmdbSeasonNumber),
+    queryKey: ["tv-show-episodes", id, tmdbSeasonNumber],
   });
 
   if (isPending) {
@@ -46,53 +51,29 @@ const TvShowEpisodesSelection: React.FC<TvShowEpisodesSelectionProps> = ({
 
   if (!data) return null;
 
-  // Step 2: The 3-Month Gap Check
-  const sortedDataEpisodes = [...data.episodes].sort((a, b) => a.episode_number - b.episode_number);
-  const groupedEpisodes: { part: number; episodes: Episode[] }[] = [];
-  
-  let currentPart = 1;
-  let currentGroup: Episode[] = [];
-
-  for (let i = 0; i < sortedDataEpisodes.length; i++) {
-    const ep = sortedDataEpisodes[i];
-
-    if (i > 0) {
-      const prevEp = sortedDataEpisodes[i - 1];
-      if (ep.air_date && prevEp.air_date) {
-        const currentAirDate = new Date(ep.air_date);
-        const prevAirDate = new Date(prevEp.air_date);
-        const diffDays = (currentAirDate.getTime() - prevAirDate.getTime()) / (1000 * 3600 * 24);
-
-        // If the gap is 90 days (~3 months) or more, we split it into a new Part
-        if (diffDays >= 90) {
-          groupedEpisodes.push({ part: currentPart, episodes: currentGroup });
-          currentPart++;
-          currentGroup = [];
+  const EPISODES = data.episodes
+    .filter((episode) => {
+      // Keep only the episodes in our selected chunk (e.g., Eps 25-48)
+      if (virtualRange) {
+        if (episode.episode_number < virtualRange[0] || episode.episode_number > virtualRange[1]) {
+          return false;
         }
       }
-    }
-    currentGroup.push(ep);
-  }
-  
-  if (currentGroup.length > 0) {
-    groupedEpisodes.push({ part: currentPart, episodes: currentGroup });
-  }
-
-  // Apply Search and Sorting filters to the groups
-  const filteredGroups = groupedEpisodes
-    .map((group) => {
-      let eps = group.episodes;
-      if (searchQuery) {
-        eps = eps.filter((ep) => ep.name.toLowerCase().includes(searchQuery.toLowerCase()));
-      }
-      if (sortedByName) {
-        eps = eps.sort((a, b) => a.name.localeCompare(b.name));
-      }
-      return { ...group, episodes: eps };
+      return searchQuery ? episode.name.toLowerCase().includes(searchQuery.toLowerCase()) : true;
     })
-    .filter((group) => group.episodes.length > 0);
+    .map((episode) => {
+      // MAGIC HAPPENS HERE: We rewrite the object for the UI and the Link!
+      return {
+        ...episode,
+        season_number: virtualSeasonNumber, // Force it to be Season 2
+        episode_number: virtualRange 
+          ? episode.episode_number - virtualRange[0] + 1 // Ep 25 becomes Ep 1
+          : episode.episode_number,
+      };
+    })
+    .sort((a, b) => (sortedByName ? a.name.localeCompare(b.name) : 0));
 
-  if (isEmpty(filteredGroups)) {
+  if (isEmpty(EPISODES)) {
     return (
       <div className="flex h-full items-center justify-center">
         <p className="text-center">No episodes found.</p>
@@ -102,36 +83,18 @@ const TvShowEpisodesSelection: React.FC<TvShowEpisodesSelectionProps> = ({
 
   if (layout === "grid") {
     return (
-      <div className="flex flex-col gap-8">
-        {filteredGroups.map((group) => (
-          <div key={group.part} className="flex flex-col gap-3">
-            {groupedEpisodes.length > 1 && (
-              <h3 className="text-xl font-bold text-warning">Part {group.part}</h3>
-            )}
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
-              {group.episodes.map((episode) => (
-                <EpisodeGridCard key={episode.id} episode={episode} id={id} />
-              ))}
-            </div>
-          </div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
+        {EPISODES.map((episode) => (
+          <EpisodeGridCard key={episode.id} episode={episode} id={id} />
         ))}
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-8">
-      {filteredGroups.map((group) => (
-        <div key={group.part} className="flex flex-col gap-3">
-          {groupedEpisodes.length > 1 && (
-            <h3 className="text-xl font-bold text-warning">Part {group.part}</h3>
-          )}
-          <div className="grid grid-cols-1 gap-2 sm:gap-4">
-            {group.episodes.map((episode, index) => (
-              <EpisodeListCard key={episode.id} episode={episode} order={index + 1} id={id} />
-            ))}
-          </div>
-        </div>
+    <div className="grid grid-cols-1 gap-2 sm:gap-4">
+      {EPISODES.map((episode, index) => (
+        <EpisodeListCard key={episode.id} episode={episode} order={index + 1} id={id} />
       ))}
     </div>
   );
@@ -147,6 +110,8 @@ export const EpisodeListCard: React.FC<EpisodeCardProps> = ({
   const { mobile } = useBreakpoints();
   const isNotReleased = !episode.air_date || new Date(episode.air_date) > new Date();
   const isOdd = order % 2 !== 0;
+  
+  // This will now correctly output /tv/[id]/2/1
   const href = !isNotReleased
     ? `/tv/${id}/${episode.season_number}/${episode.episode_number}/player`
     : undefined;
@@ -223,6 +188,8 @@ export const EpisodeListCard: React.FC<EpisodeCardProps> = ({
 const EpisodeGridCard: React.FC<EpisodeCardProps> = ({ episode, id }) => {
   const imageUrl = getImageUrl(episode.still_path);
   const isNotReleased = !episode.air_date || new Date(episode.air_date) > new Date();
+  
+  // This will now correctly output /tv/[id]/2/1
   const href = !isNotReleased
     ? `/tv/${id}/${episode.season_number}/${episode.episode_number}/player`
     : undefined;
