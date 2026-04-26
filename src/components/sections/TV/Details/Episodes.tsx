@@ -124,8 +124,6 @@ export const EpisodeListCard: React.FC<EpisodeCardProps> = ({
             </div>
           </div>
         )}
-        {/* {isNotReleased && (
-        )} */}
         <Chip
           size="sm"
           color={isNotReleased ? "warning" : undefined}
