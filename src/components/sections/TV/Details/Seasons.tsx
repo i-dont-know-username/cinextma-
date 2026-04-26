@@ -29,17 +29,33 @@ interface Props {
 const TvShowsSeasonsSelection = forwardRef<HTMLElement, Props>(
   ({ id, seasons }, ref) => {
     /**
-     * Removed the mapping logic that grouped seasons together.
-     * This ensures anime parts/cours display as individual, separate seasons.
+     * Step 1: Your original logic. Group seasons by season_number so anime 
+     * split seasons (cour/parts) from the API are merged into a single logical entry.
      */
-    const DISPLAY_SEASONS = useMemo(() => {
-      return seasons
-        .filter((season) => season.season_number > 0)
-        .map((season) => ({
-          uniqueKey: season.id.toString(), // Using ID prevents duplicate key errors if data has duplicate season_numbers
-          season_number: season.season_number,
-          name: season.name || `Season ${season.season_number}`,
-        }));
+    const GROUPED_SEASONS = useMemo(() => {
+      const map = new Map<number, Season[]>();
+
+      for (const season of seasons) {
+        if (season.season_number <= 0) continue;
+
+        if (!map.has(season.season_number)) {
+          map.set(season.season_number, []);
+        }
+
+        map.get(season.season_number)!.push(season);
+      }
+
+      return Array.from(map.entries()).map(([season_number, items]) => {
+        const name = items
+          .map((s) => s.name)
+          .filter(Boolean)
+          .join(" / ");
+
+        return {
+          season_number,
+          name: name || `Season ${season_number}`,
+        };
+      });
     }, [seasons]);
 
     const [sortedByName, { toggle, close }] = useDisclosure(false);
@@ -47,14 +63,9 @@ const TvShowsSeasonsSelection = forwardRef<HTMLElement, Props>(
     const [searchQuery] = useDebouncedValue(search, 300);
     const [layout, setLayout] = useState<"list" | "grid">("list");
 
-    const [selectedKey, setSelectedKey] = useState(() =>
-      DISPLAY_SEASONS[0]?.uniqueKey ?? ""
+    const [seasonNumber, setSeasonNumber] = useState(() =>
+      GROUPED_SEASONS[0]?.season_number.toString() ?? "1",
     );
-
-    const activeSeasonNumber = useMemo(() => {
-      const season = DISPLAY_SEASONS.find((s) => s.uniqueKey === selectedKey);
-      return season ? season.season_number : 1;
-    }, [selectedKey, DISPLAY_SEASONS]);
 
     return (
       <section ref={ref} id="seasons-episodes" className="z-3 flex flex-col gap-2">
@@ -64,17 +75,17 @@ const TvShowsSeasonsSelection = forwardRef<HTMLElement, Props>(
           <CardHeader className="grid grid-cols-1 grid-rows-[1fr_auto] gap-3 md:grid-cols-[1fr_1fr_auto_auto]">
             <Select
               aria-label="Seasons"
-              selectedKeys={selectedKey ? [selectedKey] : []}
+              selectedKeys={[seasonNumber]}
               disallowEmptySelection
               classNames={{ trigger: "border-2 border-foreground-200" }}
               onChange={(e) => {
                 close();
                 setSearch("");
-                setSelectedKey(e.target.value);
+                setSeasonNumber(e.target.value);
               }}
             >
-              {DISPLAY_SEASONS.map(({ uniqueKey, name }) => (
-                <SelectItem key={uniqueKey}>
+              {GROUPED_SEASONS.map(({ season_number, name }) => (
+                <SelectItem key={season_number.toString()}>
                   {name}
                 </SelectItem>
               ))}
@@ -120,7 +131,7 @@ const TvShowsSeasonsSelection = forwardRef<HTMLElement, Props>(
             <ScrollShadow className="h-[600px] py-2 pr-2 sm:pr-3">
               <TvShowEpisodesSelection
                 id={id}
-                seasonNumber={activeSeasonNumber}
+                seasonNumber={Number(seasonNumber)}
                 filters={{ searchQuery, sortedByName, layout }}
               />
             </ScrollShadow>
