@@ -28,34 +28,54 @@ interface Props {
 
 const TvShowsSeasonsSelection = forwardRef<HTMLElement, Props>(
   ({ id, seasons }, ref) => {
-    /**
-     * Step 1: Your original logic. Group seasons by season_number so anime 
-     * split seasons (cour/parts) from the API are merged into a single logical entry.
-     */
-    const GROUPED_SEASONS = useMemo(() => {
-      const map = new Map<number, Season[]>();
+    
+    const DISPLAY_SEASONS = useMemo(() => {
+      const result: { 
+        uniqueKey: string; 
+        tmdbSeasonNumber: number; 
+        virtualSeasonNumber: number; 
+        name: string; 
+        range?: [number, number] 
+      }[] = [];
+      
+      let currentVirtualSeason = 1;
 
-      for (const season of seasons) {
-        if (season.season_number <= 0) continue;
+      seasons.forEach((season) => {
+        if (season.season_number <= 0) return;
 
-        if (!map.has(season.season_number)) {
-          map.set(season.season_number, []);
+        // If it's a huge merged season (like JJK Season 1 with 59 eps)
+        if (season.episode_count > 25) {
+          const itemsPerPage = 24;
+          const totalParts = Math.ceil(season.episode_count / itemsPerPage);
+
+          for (let i = 0; i < totalParts; i++) {
+            const start = i * itemsPerPage + 1;
+            const end = Math.min((i + 1) * itemsPerPage, season.episode_count);
+            
+            result.push({
+              uniqueKey: `${season.id}-part-${i}`,
+              tmdbSeasonNumber: season.season_number,
+              virtualSeasonNumber: currentVirtualSeason,
+              name: `Season ${currentVirtualSeason}`, // Overrides to "Season X"
+              range: [start, end]
+            });
+            currentVirtualSeason++;
+          }
+        } else {
+          // Standard season behavior
+          result.push({
+            uniqueKey: season.id.toString(),
+            tmdbSeasonNumber: season.season_number,
+            virtualSeasonNumber: currentVirtualSeason,
+            name: season.name && !season.name.toLowerCase().includes("season") 
+                  ? season.name 
+                  : `Season ${currentVirtualSeason}`,
+          });
+          currentVirtualSeason++;
         }
-
-        map.get(season.season_number)!.push(season);
-      }
-
-      return Array.from(map.entries()).map(([season_number, items]) => {
-        const name = items
-          .map((s) => s.name)
-          .filter(Boolean)
-          .join(" / ");
-
-        return {
-          season_number,
-          name: name || `Season ${season_number}`,
-        };
       });
+
+      return result;
     }, [seasons]);
 
     const [sortedByName, { toggle, close }] = useDisclosure(false);
@@ -63,9 +83,13 @@ const TvShowsSeasonsSelection = forwardRef<HTMLElement, Props>(
     const [searchQuery] = useDebouncedValue(search, 300);
     const [layout, setLayout] = useState<"list" | "grid">("list");
 
-    const [seasonNumber, setSeasonNumber] = useState(() =>
-      GROUPED_SEASONS[0]?.season_number.toString() ?? "1",
+    const [selectedKey, setSelectedKey] = useState(() =>
+      DISPLAY_SEASONS[0]?.uniqueKey ?? ""
     );
+
+    const activeSeason = useMemo(() => {
+      return DISPLAY_SEASONS.find((s) => s.uniqueKey === selectedKey) || DISPLAY_SEASONS[0];
+    }, [selectedKey, DISPLAY_SEASONS]);
 
     return (
       <section ref={ref} id="seasons-episodes" className="z-3 flex flex-col gap-2">
@@ -75,17 +99,17 @@ const TvShowsSeasonsSelection = forwardRef<HTMLElement, Props>(
           <CardHeader className="grid grid-cols-1 grid-rows-[1fr_auto] gap-3 md:grid-cols-[1fr_1fr_auto_auto]">
             <Select
               aria-label="Seasons"
-              selectedKeys={[seasonNumber]}
+              selectedKeys={selectedKey ? [selectedKey] : []}
               disallowEmptySelection
               classNames={{ trigger: "border-2 border-foreground-200" }}
               onChange={(e) => {
                 close();
                 setSearch("");
-                setSeasonNumber(e.target.value);
+                setSelectedKey(e.target.value);
               }}
             >
-              {GROUPED_SEASONS.map(({ season_number, name }) => (
-                <SelectItem key={season_number.toString()}>
+              {DISPLAY_SEASONS.map(({ uniqueKey, name }) => (
+                <SelectItem key={uniqueKey}>
                   {name}
                 </SelectItem>
               ))}
@@ -131,7 +155,9 @@ const TvShowsSeasonsSelection = forwardRef<HTMLElement, Props>(
             <ScrollShadow className="h-[600px] py-2 pr-2 sm:pr-3">
               <TvShowEpisodesSelection
                 id={id}
-                seasonNumber={Number(seasonNumber)}
+                tmdbSeasonNumber={activeSeason?.tmdbSeasonNumber ?? 1}
+                virtualSeasonNumber={activeSeason?.virtualSeasonNumber ?? 1}
+                virtualRange={activeSeason?.range}
                 filters={{ searchQuery, sortedByName, layout }}
               />
             </ScrollShadow>
