@@ -7,12 +7,11 @@ import { Card, CardBody, CardFooter, Chip, Image, Spinner } from "@heroui/react"
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { memo } from "react";
+import { Episode } from "tmdb-ts/dist/types/tv-episode";
 
 interface TvShowEpisodesSelectionProps {
   id: number;
-  seasonNumber?: number;
-  groupId?: string;
-  mode: "season" | "group";
+  seasonNumber: number;
   filters?: {
     searchQuery?: string;
     sortedByName?: boolean;
@@ -22,7 +21,7 @@ interface TvShowEpisodesSelectionProps {
 
 interface EpisodeCardProps {
   id: number;
-  episode: any;           // TMDB episode shape
+  episode: Episode;
   order?: number;
   withAnimation?: boolean;
 }
@@ -30,21 +29,11 @@ interface EpisodeCardProps {
 const TvShowEpisodesSelection: React.FC<TvShowEpisodesSelectionProps> = ({
   id,
   seasonNumber,
-  groupId,
-  mode,
   filters: { searchQuery, sortedByName, layout } = {},
 }) => {
   const { data, isPending } = useQuery({
-    queryKey: ["tv-show-episodes", id, mode, seasonNumber, groupId],
-    queryFn: async () => {
-      if (mode === "group" && groupId) {
-        const group = await tmdb.tvShows.episodeGroup(groupId);
-        // Flatten all groups into one episode list (this is the key for anime)
-        return group.groups.flatMap((g: any) => g.episodes || []);
-      }
-      const season = await tmdb.tvShows.season(id, seasonNumber!);
-      return season.episodes || [];
-    },
+    queryFn: () => tmdb.tvShows.season(id, seasonNumber),
+    queryKey: ["tv-show-episodes", id, seasonNumber],
   });
 
   if (isPending) {
@@ -55,21 +44,13 @@ const TvShowEpisodesSelection: React.FC<TvShowEpisodesSelectionProps> = ({
     );
   }
 
-  if (!data || isEmpty(data)) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <p className="text-center">No episodes found.</p>
-      </div>
-    );
-  }
+  if (!data) return null;
 
-  const EPISODES = data
-    .filter((episode: any) =>
-      searchQuery ? episode.name?.toLowerCase().includes(searchQuery.toLowerCase()) : true
+  const EPISODES = data.episodes
+    .filter((episode) =>
+      searchQuery ? episode.name.toLowerCase().includes(searchQuery.toLowerCase()) : true,
     )
-    .sort((a: any, b: any) =>
-      sortedByName ? a.name.localeCompare(b.name) : (a.episode_number || 0) - (b.episode_number || 0)
-    );
+    .sort((a, b) => (sortedByName ? a.name.localeCompare(b.name) : 0));
 
   if (isEmpty(EPISODES)) {
     return (
@@ -82,8 +63,8 @@ const TvShowEpisodesSelection: React.FC<TvShowEpisodesSelectionProps> = ({
   if (layout === "grid") {
     return (
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
-        {EPISODES.map((episode: any, index: number) => (
-          <EpisodeGridCard key={episode.id} episode={episode} id={id} order={index + 1} />
+        {EPISODES.map((episode) => (
+          <EpisodeGridCard key={episode.id} episode={episode} id={id} />
         ))}
       </div>
     );
@@ -91,16 +72,13 @@ const TvShowEpisodesSelection: React.FC<TvShowEpisodesSelectionProps> = ({
 
   return (
     <div className="grid grid-cols-1 gap-2 sm:gap-4">
-      {EPISODES.map((episode: any, index: number) => (
+      {EPISODES.map((episode, index) => (
         <EpisodeListCard key={episode.id} episode={episode} order={index + 1} id={id} />
       ))}
     </div>
   );
 };
 
-// ─────────────────────────────────────────────────────────────
-// Keep this exported — your Player page imports it
-// ─────────────────────────────────────────────────────────────
 export const EpisodeListCard: React.FC<EpisodeCardProps> = ({
   episode,
   order = 1,
@@ -110,17 +88,15 @@ export const EpisodeListCard: React.FC<EpisodeCardProps> = ({
   const imageUrl = getImageUrl(episode.still_path);
   const { mobile } = useBreakpoints();
   const isNotReleased = !episode.air_date || new Date(episode.air_date) > new Date();
-
-  const href = !isNotReleased
-    ? `/tv/${id}/${episode.season_number || 1}/${episode.episode_number || order}/player`
-    : undefined;
-
   const isOdd = order % 2 !== 0;
+  const href = !isNotReleased
+    ? `/tv/${id}/${episode.season_number}/${episode.episode_number}/player`
+    : undefined;
 
   return (
     <Card
       isPressable={!isNotReleased}
-      as={(isNotReleased ? "div" : Link) as any}
+      as={(isNotReleased ? "div" : Link) as "a"}
       href={href}
       shadow="none"
       className={cn(
@@ -130,11 +106,9 @@ export const EpisodeListCard: React.FC<EpisodeCardProps> = ({
           "cursor-not-allowed opacity-50": isNotReleased,
           "motion-preset-slide-left": isOdd && withAnimation,
           "motion-preset-slide-right": !isOdd && withAnimation,
-        }
+        },
       )}
     >
-      {/* ... your original EpisodeListCard JSX ... */}
-      {/* (I kept it exactly as you had it before to avoid breaking styling) */}
       <div className="relative">
         <Image
           alt={episode.name}
@@ -150,6 +124,8 @@ export const EpisodeListCard: React.FC<EpisodeCardProps> = ({
             </div>
           </div>
         )}
+        {/* {isNotReleased && (
+        )} */}
         <Chip
           size="sm"
           color={isNotReleased ? "warning" : undefined}
@@ -164,14 +140,16 @@ export const EpisodeListCard: React.FC<EpisodeCardProps> = ({
           size="sm"
           className="absolute bottom-2 left-2 z-20 min-w-9 bg-black/35 text-center text-white backdrop-blur-xs"
         >
-          {episode.episode_number || order}
+          {episode.episode_number}
         </Chip>
       </div>
-
       <CardBody className="flex space-y-1">
         <p
           title={episode.name}
-          className={cn("line-clamp-1 text-xl font-semibold transition-colors", !isNotReleased && "group-hover:text-warning")}
+          className={cn(
+            "line-clamp-1 text-xl font-semibold transition-colors",
+            !isNotReleased && "group-hover:text-warning",
+          )}
         >
           {episode.name}
         </p>
@@ -189,23 +167,24 @@ export const EpisodeListCard: React.FC<EpisodeCardProps> = ({
 const EpisodeGridCard: React.FC<EpisodeCardProps> = ({ episode, id }) => {
   const imageUrl = getImageUrl(episode.still_path);
   const isNotReleased = !episode.air_date || new Date(episode.air_date) > new Date();
-
   const href = !isNotReleased
-    ? `/tv/${id}/${episode.season_number || 1}/${episode.episode_number || 1}/player`
+    ? `/tv/${id}/${episode.season_number}/${episode.episode_number}/player`
     : undefined;
 
   return (
     <Card
       isPressable={!isNotReleased}
-      as={(isNotReleased ? "div" : Link) as any}
+      as={(isNotReleased ? "div" : Link) as "a"}
       href={href}
       shadow="none"
-      className={cn("group motion-preset-focus border-foreground-200 bg-foreground-100 border-2 transition-colors", {
-        "hover:border-warning hover:bg-foreground-200": !isNotReleased,
-        "cursor-not-allowed opacity-50": isNotReleased,
-      })}
+      className={cn(
+        "group motion-preset-focus border-foreground-200 bg-foreground-100 border-2 transition-colors",
+        {
+          "hover:border-warning hover:bg-foreground-200": !isNotReleased,
+          "cursor-not-allowed opacity-50": isNotReleased,
+        },
+      )}
     >
-      {/* Your original grid card JSX — kept intact */}
       <CardBody className="overflow-visible p-0">
         <div className="relative">
           <Image
@@ -240,7 +219,13 @@ const EpisodeGridCard: React.FC<EpisodeCardProps> = ({ episode, id }) => {
       </CardBody>
       <CardFooter className="h-full">
         <div className="flex h-full flex-col gap-2">
-          <p title={episode.name} className={cn("text-lg font-semibold transition-colors", !isNotReleased && "group-hover:text-warning")}>
+          <p
+            title={episode.name}
+            className={cn(
+              "text-lg font-semibold transition-colors",
+              !isNotReleased && "group-hover:text-warning",
+            )}
+          >
             {episode.name}
           </p>
           <p className="text-content4-foreground line-clamp-1 text-xs">
