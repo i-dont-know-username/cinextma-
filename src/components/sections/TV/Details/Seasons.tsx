@@ -1,6 +1,16 @@
-import { forwardRef, memo, useMemo, useState, useEffect } from "react";
-import { Card, CardHeader, CardBody, Select, SelectItem, Input, ScrollShadow, Tabs, Tab, Tooltip, Spinner } from "@heroui/react";
-import { Season } from "tmdb-ts";
+import { forwardRef, memo, useMemo, useState } from "react";
+import {
+  Card,
+  CardHeader,
+  CardBody,
+  Select,
+  SelectItem,
+  Input,
+  ScrollShadow,
+  Tabs,
+  Tab,
+  Tooltip,
+} from "@heroui/react";
 import { Grid, List, Search, SortAlpha } from "@/utils/icons";
 import { useDebouncedValue, useDisclosure } from "@mantine/hooks";
 import dynamic from "next/dynamic";
@@ -14,105 +24,117 @@ const TvShowEpisodesSelection = dynamic(() => import("./Episodes"));
 
 interface Props {
   id: number;
-  seasons: Season[];
+  seasons: any[];
 }
 
-const TvShowsSeasonsSelection = forwardRef<HTMLElement, Props>(({ id, seasons }, ref) => {
-  // 1. Fetch available episode groups
-  const { data: groupList, isLoading: loadingGroups } = useQuery({
-    queryKey: ["tv-episode-groups", id],
-    queryFn: () => fetch(`https://api.themoviedb.org/3/tv/${id}/episode_groups?api_key=a2f888b27315e62e471b2d587048f32e`).then(res => res.json()),
-  });
+const TvShowsSeasonsSelection = forwardRef<HTMLElement, Props>(
+  ({ id, seasons }, ref) => {
+    const [sortedByName, { toggle, close }] = useDisclosure(false);
+    const [search, setSearch] = useState("");
+    const [searchQuery] = useDebouncedValue(search, 300);
+    const [layout, setLayout] = useState<"list" | "grid">("list");
 
-  // 2. Fetch the specific details for the "Original Air Date" or "TV" group
-  const preferredGroupId = useMemo(() => {
-    if (!groupList?.results) return null;
-    // We look for "Original Air Date" or "Digital" or "TV" order
-    const group = groupList.results.find((g: any) => g.type === 1 || g.name.toLowerCase().includes("season") || g.name.toLowerCase().includes("air date"));
-    return group?.id || groupList.results[0]?.id;
-  }, [groupList]);
+    // 🔥 Fetch episode groups
+    const { data: groupsData } = useQuery({
+      queryKey: ["tv-episode-groups", id],
+      queryFn: () => tmdb.tvShows.episodeGroups(id),
+    });
 
-  const { data: groupDetails, isLoading: loadingDetails } = useQuery({
-    queryKey: ["episode-group-details", preferredGroupId],
-    queryFn: () => fetch(`https://api.themoviedb.org/3/episode_group/${preferredGroupId}?api_key=a2f888b27315e62e471b2d587048f32e`).then(res => res.json()),
-    enabled: !!preferredGroupId,
-  });
+    const GROUPS = groupsData?.results || [];
 
-  // 3. Format the groups into "Seasons"
-  const DISPLAY_SEASONS = useMemo(() => {
-    if (groupDetails?.groups) {
-      return groupDetails.groups.map((group: any, index: number) => ({
-        uniqueKey: group.id,
-        name: `Season ${index + 1}`, // Always use "Season X"
-        episodes: group.episodes,
-        isGroup: true
-      }));
-    }
-    // Fallback to regular seasons if no groups found
-    return seasons.filter(s => s.season_number > 0).map(s => ({
-      uniqueKey: s.id.toString(),
-      name: s.name || `Season ${s.season_number}`,
-      season_number: s.season_number,
-      isGroup: false
-    }));
-  }, [groupDetails, seasons]);
+    const hasGroups = GROUPS.length > 0;
 
-  const [sortedByName, { toggle, close }] = useDisclosure(false);
-  const [search, setSearch] = useState("");
-  const [searchQuery] = useDebouncedValue(search, 300);
-  const [layout, setLayout] = useState<"list" | "grid">("list");
-  const [selectedKey, setSelectedKey] = useState("");
+    const dropdownItems = useMemo(() => {
+      if (hasGroups) {
+        return GROUPS.map((g: any) => ({
+          key: `group-${g.id}`,
+          label: g.name,
+          type: "group",
+          id: g.id,
+        }));
+      }
 
-  useEffect(() => {
-    if (DISPLAY_SEASONS.length > 0 && !selectedKey) {
-      setSelectedKey(DISPLAY_SEASONS[0].uniqueKey);
-    }
-  }, [DISPLAY_SEASONS, selectedKey]);
+      return seasons
+        .filter((s) => s.season_number > 0)
+        .map((s) => ({
+          key: `season-${s.season_number}`,
+          label: s.name,
+          type: "season",
+          season_number: s.season_number,
+        }));
+    }, [GROUPS, seasons, hasGroups]);
 
-  const activeSeason = useMemo(() => {
-    return DISPLAY_SEASONS.find((s) => s.uniqueKey === selectedKey) || DISPLAY_SEASONS[0];
-  }, [selectedKey, DISPLAY_SEASONS]);
+    const [selected, setSelected] = useState(dropdownItems[0]?.key);
 
-  if (loadingGroups || loadingDetails) return <Spinner color="warning" />;
+    const selectedItem = dropdownItems.find((i) => i.key === selected);
 
-  return (
-    <section ref={ref} id="seasons-episodes" className="z-3 flex flex-col gap-2">
-      <SectionTitle color="warning">Season & Episode</SectionTitle>
-      <Card className="sm:p-3">
-        <CardHeader className="grid grid-cols-1 grid-rows-[1fr_auto] gap-3 md:grid-cols-[1fr_1fr_auto_auto]">
-          <Select
-            aria-label="Seasons"
-            selectedKeys={selectedKey ? [selectedKey] : []}
-            disallowEmptySelection
-            onChange={(e) => { setSelectedKey(e.target.value); setSearch(""); }}
-          >
-            {DISPLAY_SEASONS.map((s) => (
-              <SelectItem key={s.uniqueKey}>{s.name}</SelectItem>
-            ))}
-          </Select>
-          <Input placeholder="Search episodes..." value={search} onValueChange={setSearch} startContent={<Search />} />
-          <Tabs color="warning" size="sm" onSelectionChange={(v) => setLayout(v as any)} selectedKey={layout}>
-            <Tab key="list" title={<List />} />
-            <Tab key="grid" title={<Grid />} />
-          </Tabs>
-          <IconButton icon={<SortAlpha />} onPress={toggle} color={sortedByName ? "warning" : undefined} />
-        </CardHeader>
-        <CardBody>
-          <ScrollShadow className="h-[600px] py-2">
-            <TvShowEpisodesSelection
-              id={id}
-              // If it's a group, we pass the episodes directly to avoid another API call
-              groupEpisodes={activeSeason?.isGroup ? activeSeason.episodes : null}
-              seasonNumber={activeSeason?.season_number}
-              virtualSeasonNumber={DISPLAY_SEASONS.indexOf(activeSeason) + 1}
-              filters={{ searchQuery, sortedByName, layout }}
+    return (
+      <section ref={ref} id="seasons-episodes" className="z-3 flex flex-col gap-2">
+        <SectionTitle color="warning">Season & Episode</SectionTitle>
+
+        <Card className="sm:p-3">
+          <CardHeader className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_1fr_auto_auto]">
+            <Select
+              selectedKeys={[selected]}
+              onChange={(e) => {
+                close();
+                setSearch("");
+                setSelected(e.target.value);
+              }}
+              classNames={{ trigger: "border-2 border-foreground-200" }}
+            >
+              {dropdownItems.map((item) => (
+                <SelectItem key={item.key}>{item.label}</SelectItem>
+              ))}
+            </Select>
+
+            <Input
+              isClearable
+              placeholder="Search episodes..."
+              value={search}
+              onValueChange={setSearch}
+              startContent={<Search />}
+              classNames={{ inputWrapper: "border-2 border-foreground-200" }}
             />
-          </ScrollShadow>
-        </CardBody>
-      </Card>
-    </section>
-  );
-});
+
+            <Tooltip content={titleCase(layout)}>
+              <Tabs
+                color="warning"
+                size="sm"
+                selectedKey={layout}
+                onSelectionChange={(value) => setLayout(value as any)}
+              >
+                <Tab key="list" title={<List />} />
+                <Tab key="grid" title={<Grid />} />
+              </Tabs>
+            </Tooltip>
+
+            <IconButton
+              tooltip="Sort by name"
+              icon={<SortAlpha />}
+              onPress={toggle}
+              color={sortedByName ? "warning" : undefined}
+            />
+          </CardHeader>
+
+          <CardBody>
+            <ScrollShadow className="h-[600px] py-2 pr-2 sm:pr-3">
+              {selectedItem && (
+                <TvShowEpisodesSelection
+                  id={id}
+                  mode={selectedItem.type}
+                  groupId={selectedItem.id}
+                  seasonNumber={selectedItem.season_number}
+                  filters={{ searchQuery, sortedByName, layout }}
+                />
+              )}
+            </ScrollShadow>
+          </CardBody>
+        </Card>
+      </section>
+    );
+  },
+);
 
 TvShowsSeasonsSelection.displayName = "TvShowsSeasonsSelection";
 export default memo(TvShowsSeasonsSelection);
